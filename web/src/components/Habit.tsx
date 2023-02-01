@@ -1,4 +1,3 @@
-
 interface HabitProps {
   completed: number;
 }
