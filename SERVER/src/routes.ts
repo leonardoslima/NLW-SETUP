@@ -1,16 +1,15 @@
-import dayjs from "dayjs";
-import { FastifyInstance } from "fastify";
-import { z } from "zod";
+import dayjs from "dayjs"
+import { FastifyInstance } from "fastify"
+import { z } from "zod"
 import { prisma } from "./lib/prisma"
 
 export async function appRoutes(app: FastifyInstance) {
   app.post('/habits', async (request) => {
-    //title, weekDays
     const createHabitBody = z.object({
       title: z.string(),
       weekDays: z.array(
         z.number().min(0).max(6)
-      )
+      ),
     })
 
     const { title, weekDays } = createHabitBody.parse(request.body)
@@ -22,11 +21,11 @@ export async function appRoutes(app: FastifyInstance) {
         title,
         created_at: today,
         weekDays: {
-          create: weekDays.map(weekDay => {
+          create: weekDays.map((weekDay) => {
             return {
               week_day: weekDay,
             }
-          })
+          }),
         }
       }
     })
@@ -34,7 +33,7 @@ export async function appRoutes(app: FastifyInstance) {
 
   app.get('/day', async (request) => {
     const getDayParams = z.object({
-      date: z.coerce.date()
+      date: z.coerce.date(),
     })
 
     const { date } = getDayParams.parse(request.query)
@@ -49,13 +48,13 @@ export async function appRoutes(app: FastifyInstance) {
         },
         weekDays: {
           some: {
-            week_day: weekDay
+            week_day: weekDay,
           }
         }
-      }
+      },
     })
 
-    const day = await prisma.day.findUnique({
+    const day = await prisma.day.findFirst({
       where: {
         date: parsedDate.toDate(),
       },
@@ -66,7 +65,7 @@ export async function appRoutes(app: FastifyInstance) {
 
     const completedHabits = day?.dayHabits.map(dayHabit => {
       return dayHabit.habit_id
-    })
+    }) ?? []
 
     return {
       possibleHabits,
@@ -74,12 +73,9 @@ export async function appRoutes(app: FastifyInstance) {
     }
   })
 
-  // completar / não-completar um hábito
   app.patch('/habits/:id/toggle', async (request) => {
-    // route param => parâmetro de identificação
-
     const toggleHabitParams = z.object({
-      id: z.string().uuid(),
+      id: z.string().uuid()
     })
 
     const { id } = toggleHabitParams.parse(request.params)
@@ -88,14 +84,14 @@ export async function appRoutes(app: FastifyInstance) {
 
     let day = await prisma.day.findUnique({
       where: {
-        date: today,
+        date: today
       }
     })
 
-    if (!day) {
+    if(!day) {
       day = await prisma.day.create({
         data: {
-          date: today,
+          date: today
         }
       })
     }
@@ -104,38 +100,31 @@ export async function appRoutes(app: FastifyInstance) {
       where: {
         day_id_habit_id: {
           day_id: day.id,
-          habit_id: id,
+          habit_id: id
         }
       }
     })
 
-    if (dayHabit) {
-      // remove a marcação de completo
+    if(dayHabit) {
       await prisma.dayHabit.delete({
         where: {
-          id: dayHabit.id,
+          id: dayHabit.id
         }
       })
     } else {
-      //Completar o hábito
       await prisma.dayHabit.create({
         data: {
           day_id: day.id,
-          habit_id: id,
+          habit_id: id
         }
       })
     }
   })
 
-  app.get('/summary', async (request) => {
-    // [ {date: 17/01, amount: 5, completed: 1}, { date: 18/01, amount: 2, completed: 2}, {} ]
-
-    // Query mais complexa, mais condições, relacionamento => SQL na mão (RAW)
-    // Prisma ORM: RAW SQL => SQLite
-
+  app.get('/summary', async () => {
     const summary = await prisma.$queryRaw`
       SELECT 
-        D.id,
+        D.id, 
         D.date,
         (
           SELECT 
@@ -146,12 +135,12 @@ export async function appRoutes(app: FastifyInstance) {
         (
           SELECT
             cast(count(*) as float)
-          FROM habit_week_days HWD
+          FROM habit_week_days HDW
           JOIN habits H
-            ON H.id = HWD.habit_id
+            ON H.id = HDW.habit_id
           WHERE
-            HWD.week_day = cast(strftime('%w', D.date/1000.0, 'unixepoch') as int)
-            AND H.created_at <= D.date 
+            HDW.week_day = cast(strftime('%w', D.date/1000.0, 'unixepoch') as int)
+            AND H.created_at <= D.date
         ) as amount
       FROM days D
     `
